@@ -1,1 +1,295 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Full Screen Camera + Mic Mirror</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: #fff;
+    }
+    .app {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      grid-template-rows: 1fr auto;
+    }
+    /* Video full-bleed + mirror */
+    #videoWrap {
+      position: relative;
+      overflow: hidden;
+      background: #000;
+    }
+    video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror */
+      background: #000;
+    }
+    /* Mic waveform overlay (bottom) */
+    #wave {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: min(22vh, 180px);
+      opacity: 0.85;
+      pointer-events: none;
+    }
 
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: .5rem;
+      padding: .75rem;
+      background: linear-gradient(to top, rgba(0,0,0,.65), rgba(0,0,0,0));
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    button {
+      appearance: none;
+      border: 1px solid #444;
+      background: #111;
+      color: #fff;
+      padding: .6rem .9rem;
+      border-radius: .5rem;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    button:hover { background: #181818; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .status {
+      text-align: center;
+      font-size: .9rem;
+      opacity: .85;
+      padding-bottom: .5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div id="videoWrap">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="wave"></canvas>
+    </div>
+
+    <div>
+      <div class="status" id="status">Ready. परवानगी दिल्यावर व्हिडिओ आणि माइक सुरू होतील.</div>
+      <div class="controls">
+        <button id="btnStart">Start</button>
+        <button id="btnStop" disabled>Stop</button>
+        <button id="btnFullscreen">Fullscreen</button>
+        <button id="btnToggleMonitor" disabled>Mic Monitor: OFF</button>
+        <button id="btnSwitchCam" title="Front/Back camera switch" disabled>Switch Cam</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const els = {
+      video: document.getElementById('video'),
+      wave: document.getElementById('wave'),
+      status: document.getElementById('status'),
+      btnStart: document.getElementById('btnStart'),
+      btnStop: document.getElementById('btnStop'),
+      btnFullscreen: document.getElementById('btnFullscreen'),
+      btnToggleMonitor: document.getElementById('btnToggleMonitor'),
+      btnSwitchCam: document.getElementById('btnSwitchCam'),
+      app: document.getElementById('app')
+    };
+
+    let stream = null;
+    let audioCtx = null;
+    let analyser = null;
+    let sourceNode = null;
+    let monitorGain = null;
+    let drawRaf = null;
+    let currentFacing = 'user'; // 'user' (front) | 'environment' (rear)
+
+    // Resize canvas to match width
+    function sizeCanvas() {
+      const rect = els.wave.getBoundingClientRect();
+      els.wave.width = Math.floor(rect.width);
+      els.wave.height = Math.floor(rect.height);
+    }
+    window.addEventListener('resize', sizeCanvas);
+
+    function setStatus(msg) { els.status.textContent = msg; }
+
+    async function start(kindFacing = currentFacing) {
+      stop(); // clean if already running
+
+      try {
+        const constraints = {
+          video: {
+            facingMode: { ideal: kindFacing },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        els.video.srcObject = stream;
+
+        // Enable/disable buttons
+        els.btnStart.disabled = true;
+        els.btnStop.disabled = false;
+        els.btnToggleMonitor.disabled = false;
+        els.btnSwitchCam.disabled = true; // enable after we check for multiple cams
+
+        // Audio setup for waveform + optional monitor
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+
+        sourceNode = audioCtx.createMediaStreamSource(stream);
+        monitorGain = audioCtx.createGain();
+        monitorGain.gain.value = 0.0; // start with monitor OFF
+
+        sourceNode.connect(analyser);
+        // Monitor chain (muted until toggled ON)
+        analyser.connect(monitorGain).connect(audioCtx.destination);
+
+        // Detect camera switching availability
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const cams = devices.filter(d => d.kind === 'videoinput');
+          els.btnSwitchCam.disabled = cams.length < 2;
+        } catch (_) {}
+
+        sizeCanvas();
+        drawWaveform();
+        setStatus('Live. Camera mirror ON, mic waveform दिसत आहे.');
+      } catch (err) {
+        console.error(err);
+        setStatus('परवानगी नाकारली किंवा device उपलब्ध नाही: ' + (err.message || err));
+        // Reset buttons
+        els.btnStart.disabled = false;
+        els.btnStop.disabled = true;
+        els.btnToggleMonitor.disabled = true;
+        els.btnSwitchCam.disabled = true;
+      }
+    }
+
+    function stop() {
+      if (drawRaf) cancelAnimationFrame(drawRaf);
+      drawRaf = null;
+
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+      if (audioCtx) {
+        audioCtx.close().catch(()=>{});
+        audioCtx = null;
+      }
+      analyser = null;
+      sourceNode = null;
+      monitorGain = null;
+
+      els.video.srcObject = null;
+      els.btnStart.disabled = false;
+      els.btnStop.disabled = true;
+      els.btnToggleMonitor.disabled = true;
+      els.btnSwitchCam.disabled = true;
+
+      clearCanvas();
+      setStatus('Stopped.');
+    }
+
+    function clearCanvas() {
+      const ctx = els.wave.getContext('2d');
+      ctx.clearRect(0, 0, els.wave.width, els.wave.height);
+    }
+
+    function drawWaveform() {
+      const ctx = els.wave.getContext('2d');
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        drawRaf = requestAnimationFrame(draw);
+        analyser.getByteTimeDomainData(dataArray);
+
+        ctx.clearRect(0, 0, els.wave.width, els.wave.height);
+
+        // Background strip
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, els.wave.width, els.wave.height);
+        ctx.globalAlpha = 1;
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#fff';
+        ctx.beginPath();
+
+        const sliceWidth = els.wave.width * 1.0 / bufferLength;
+        let x = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = v * els.wave.height / 2;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+          x += sliceWidth;
+        }
+        ctx.lineTo(els.wave.width, els.wave.height / 2);
+        ctx.stroke();
+      }
+      draw();
+    }
+
+    function toggleFullscreen() {
+      const el = document.fullscreenElement ? document : els.app;
+      if (!document.fullscreenElement) {
+        (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen)?.call(el);
+      } else {
+        (el.exitFullscreen || el.webkitExitFullscreen || el.msExitFullscreen)?.call(el);
+      }
+    }
+
+    function toggleMonitor() {
+      if (!monitorGain) return;
+      const isOff = monitorGain.gain.value === 0;
+      // सावधान: स्पीकर्स जवळ माइक असेल तर feedback होऊ शकतो
+      monitorGain.gain.value = isOff ? 0.2 : 0.0;
+      els.btnToggleMonitor.textContent = 'Mic Monitor: ' + (isOff ? 'ON' : 'OFF');
+      setStatus(isOff ? 'Mic monitor ON (कमी volume).' : 'Mic monitor OFF.');
+    }
+
+    async function switchCamera() {
+      // Toggle facing mode and restart stream
+      currentFacing = currentFacing === 'user' ? 'environment' : 'user';
+      await start(currentFacing);
+    }
+
+    // Wire up UI
+    els.btnStart.addEventListener('click', () => start());
+    els.btnStop.addEventListener('click', () => stop());
+    els.btnToggleMonitor.addEventListener('click', () => toggleMonitor());
+    els.btnFullscreen.addEventListener('click', () => toggleFullscreen());
+    els.btnSwitchCam.addEventListener('click', () => switchCamera());
+
+    // Helpful: auto-start if permissions were granted previously
+    (async () => {
+      try {
+        const statuses = await navigator.permissions?.query({ name: 'camera' }).catch(()=>null);
+        if (statuses && statuses.state === 'granted') start();
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>
