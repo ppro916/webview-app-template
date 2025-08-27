@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tic Tac Toe — Full Screen</title>
+  <style>
+    :root{
+      --bg:#0f1720;
+      --card:#0b1220;
+      --accent:#22c1c3;
+      --accent-2:#7b61ff;
+      --muted:#9aa7b2;
+      --win:#ffd166;
+      --size: min(72vmin, 720px);
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      background:linear-gradient(180deg, var(--bg), #061018 70%);
+      color:#e6eef3;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+
+    .wrap{
+      height:100%;
+      display:grid;
+      place-items:center;
+      padding:24px;
+      box-sizing:border-box;
+    }
+
+    .board-card{
+      width:var(--size);
+      max-width:98vw;
+      aspect-ratio: 1 / 1.05;
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:18px;
+      box-shadow: 0 10px 30px rgba(2,6,12,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+
+    header {
+      padding:18px 20px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .title {
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    .logo{
+      width:44px;
+      height:44px;
+      border-radius:10px;
+      background:linear-gradient(135deg,var(--accent),var(--accent-2));
+      display:grid;
+      place-items:center;
+      font-weight:700;
+      font-size:18px;
+      color:#042026;
+      box-shadow: 0 6px 18px rgba(34,193,195,0.18);
+    }
+    h1{font-size:1.05rem;margin:0;}
+    p.subtitle{margin:0;color:var(--muted);font-size:0.86rem;}
+
+    .controls{
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    button {
+      background:transparent;
+      border:1px solid rgba(255,255,255,0.06);
+      padding:8px 12px;
+      border-radius:10px;
+      color:inherit;
+      cursor:pointer;
+      font-weight:600;
+    }
+    button.primary {
+      background:linear-gradient(90deg,var(--accent),var(--accent-2));
+      color:#031618;
+      border: none;
+      box-shadow: 0 8px 20px rgba(123,97,255,0.12);
+    }
+    button:active { transform: translateY(1px); }
+
+    /* Board area */
+    .grid-wrap{
+      flex:1;
+      display:grid;
+      place-items:center;
+      padding:20px;
+      gap:10px;
+    }
+
+    .grid {
+      width:90%;
+      max-width:560px;
+      aspect-ratio:1/1;
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      transform-origin:center;
+      transition: transform .25s ease;
+    }
+
+    .cell {
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));
+      border-radius:12px;
+      display:grid;
+      place-items:center;
+      font-size:clamp(28px, 10vmin, 96px);
+      font-weight:900;
+      color: #e6eef3;
+      cursor:pointer;
+      user-select:none;
+      box-shadow: 0 6px 14px rgba(2,6,12,0.5);
+      transition: transform .14s cubic-bezier(.2,.9,.3,1), background .18s;
+    }
+    .cell:hover { transform: translateY(-6px) scale(1.02); }
+    .cell.disabled { cursor:default; opacity:0.9; transform:none; }
+    .cell.x { color: #ffb2b2; } /* X color */
+    .cell.o { color: #b2f1ff; } /* O color */
+
+    .info {
+      padding:12px 20px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      border-top: 1px solid rgba(255,255,255,0.02);
+    }
+    .turn {
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    .turn-indicator {
+      width:44px;height:44px;border-radius:10px;display:grid;place-items:center;
+      font-weight:800;font-size:1.05rem;
+      background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      border:1px solid rgba(255,255,255,0.03);
+    }
+    .score {
+      color:var(--muted);
+      font-weight:700;
+    }
+
+    /* Winning highlight */
+    .cell.win {
+      background: linear-gradient(90deg, rgba(255,209,102,0.14), rgba(255,209,102,0.06));
+      box-shadow: 0 10px 30px rgba(255,209,102,0.06), inset 0 1px 0 rgba(255,255,255,0.02);
+      animation: pulse 900ms infinite alternate;
+    }
+    @keyframes pulse {
+      from { transform: scale(1); }
+      to { transform: scale(1.04) rotate(-0.6deg); }
+    }
+
+    /* small screens */
+    @media (max-width:520px){
+      :root { --size: min(92vmin, 540px); }
+      .logo{ width:40px;height:40px;font-size:16px;}
+      header{padding:12px;}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="board-card" role="application" aria-label="Tic Tac Toe">
+      <header>
+        <div class="title">
+          <div class="logo">T3</div>
+          <div>
+            <h1>Tic Tac Toe</h1>
+            <p class="subtitle">दोघे खेळा — X आणि O. जागा टिक करा आणि जिंका!</p>
+          </div>
+        </div>
+
+        <div class="controls" aria-hidden="false">
+          <button id="btnUndo" title="Undo last move" disabled>Undo</button>
+          <button id="btnResetScore" title="Reset score">Reset Score</button>
+          <button id="btnRestart" class="primary" title="Start new round">New Round</button>
+        </div>
+      </header>
+
+      <div class="grid-wrap">
+        <div id="grid" class="grid" role="grid" aria-label="Game board"></div>
+      </div>
+
+      <div class="info">
+        <div class="turn" id="turnInfo" aria-live="polite">
+          <div class="turn-indicator" id="turnIndicator">X</div>
+          <div>
+            <div id="statusText">X ची वेळ — खेळ करा</div>
+            <div class="score" id="scoreText">X: 0  •  O: 0  •  ड्रॉ: 0</div>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:0.85rem;color:var(--muted);margin-right:8px">Play as</label>
+          <select id="selectFirst" aria-label="Choose who starts">
+            <option value="X">X (पहिला)</option>
+            <option value="O">O (पहिला)</option>
+            <option value="alternate">Alternate</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Simple full-screen Tic-Tac-Toe (2-player local)
+    const gridEl = document.getElementById('grid');
+    const turnIndicator = document.getElementById('turnIndicator');
+    const statusText = document.getElementById('statusText');
+    const scoreText = document.getElementById('scoreText');
+    const btnRestart = document.getElementById('btnRestart');
+    const btnResetScore = document.getElementById('btnResetScore');
+    const btnUndo = document.getElementById('btnUndo');
+    const selectFirst = document.getElementById('selectFirst');
+
+    let board = Array(9).fill(null); // null | 'X' | 'O'
+    let history = []; // move indices
+    let current = 'X';
+    let scores = { X:0, O:0, D:0 };
+    let alternateStarter = 'X';
+    let gameOver = false;
+
+    // Winning combos
+    const wins = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+
+    function createBoard(){
+      gridEl.innerHTML = '';
+      for(let i=0;i<9;i++){
+        const cell = document.createElement('button');
+        cell.className = 'cell';
+        cell.setAttribute('role','gridcell');
+        cell.setAttribute('aria-label', `Cell ${i+1}`);
+        cell.dataset.idx = i;
+        cell.addEventListener('click', onCellClick);
+        cell.addEventListener('keydown', onCellKey);
+        cell.tabIndex = 0;
+        gridEl.appendChild(cell);
+      }
+    }
+
+    function onCellKey(e){
+      if(e.key === 'Enter' || e.key === ' '){
+        e.preventDefault();
+        e.currentTarget.click();
+      }
+    }
+
+    function onCellClick(e){
+      const idx = Number(e.currentTarget.dataset.idx);
+      if(gameOver || board[idx]) return;
+      makeMove(idx);
+    }
+
+    function makeMove(idx){
+      board[idx] = current;
+      history.push(idx);
+      render();
+      const result = checkWinner();
+      if(result){
+        endRound(result);
+        return;
+      }
+      // draw?
+      if(board.every(Boolean)){
+        endRound('draw');
+        return;
+      }
+      // swap turn
+      current = current === 'X' ? 'O' : 'X';
+      updateStatus();
+      btnUndo.disabled = false;
+    }
+
+    function checkWinner(){
+      for(const combo of wins){
+        const [a,b,c] = combo;
+        if(board[a] && board[a] === board[b] && board[a] === board[c]){
+          return { winner: board[a], combo };
+        }
+      }
+      return null;
+    }
+
+    function endRound(result){
+      gameOver = true;
+      if(result === 'draw'){
+        scores.D++;
+        statusText.textContent = 'बरोबरी — कोणताही विजेता नाही.';
+      } else {
+        scores[result.winner]++;
+        statusText.textContent = `${result.winner} जिंकलं!`;
+        highlightWinning(result.combo);
+      }
+      updateScore();
+      btnUndo.disabled = true;
+      // choose next starter depending on select
+      const mode = selectFirst.value;
+      if(mode === 'alternate'){
+        alternateStarter = alternateStarter === 'X' ? 'O' : 'X';
+        current = alternateStarter;
+      } else {
+        current = mode; // X or O
+      }
+      turnIndicator.textContent = current;
+    }
+
+    function highlightWinning(combo){
+      combo.forEach(i => {
+        const el = gridEl.children[i];
+        el.classList.add('win');
+      });
+      // make others disabled visually
+      for(let i=0;i<9;i++){
+        if(!combo.includes(i)) gridEl.children[i].classList.add('disabled');
+      }
+    }
+
+    function updateStatus(){
+      turnIndicator.textContent = current;
+      statusText.textContent = `${current} ची वेळ — खेळ करा`;
+    }
+
+    function updateScore(){
+      scoreText.textContent = `X: ${scores.X}  •  O: ${scores.O}  •  ड्रॉ: ${scores.D}`;
+    }
+
+    function render(){
+      for(let i=0;i<9;i++){
+        const el = gridEl.children[i];
+        el.classList.remove('x','o','win','disabled');
+        el.textContent = board[i] ? board[i] : '';
+        if(board[i]) el.classList.add(board[i].toLowerCase());
+      }
+    }
+
+    function restartRound(clearBoardOnly = true){
+      board = Array(9).fill(null);
+      history = [];
+      gameOver = false;
+      // set starter
+      const mode = selectFirst.value;
+      if(mode === 'alternate'){
+        current = alternateStarter;
+      } else {
+        current = mode;
+      }
+      // reset visuals
+      for(let i=0;i<9;i++){
+        const el = gridEl.children[i];
+        el.classList.remove('win','disabled','x','o');
+        el.textContent = '';
+      }
+      updateStatus();
+      btnUndo.disabled = true;
+      // small board pop animation
+      gridEl.style.transform = 'scale(0.985)';
+      setTimeout(()=> gridEl.style.transform = '', 160);
+    }
+
+    // Undo last move (only before round end)
+    function undo(){
+      if(history.length === 0 || gameOver) return;
+      const last = history.pop();
+      board[last] = null;
+      current = current === 'X' ? 'O' : 'X';
+      render();
+      updateStatus();
+      btnUndo.disabled = history.length === 0;
+    }
+
+    // Reset everything
+    function resetScore(){
+      scores = { X:0, O:0, D:0 };
+      updateScore();
+      restartRound();
+    }
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      if(e.key === 'r' || e.key === 'R') btnRestart.click();
+      if(e.key === 'u' || e.key === 'U') btnUndo.click();
+      if(e.key === 's' || e.key === 'S') btnResetScore.click();
+    });
+
+    // Wire up buttons
+    btnRestart.addEventListener('click', () => restartRound());
+    btnResetScore.addEventListener('click', () => {
+      if(confirm('स्कोअर रीसेट करायचा?')) resetScore();
+    });
+    btnUndo.addEventListener('click', () => undo());
+    selectFirst.addEventListener('change', () => {
+      // If they change starter mid-round, apply to next round only
+      // show small cue
+      const val = selectFirst.value;
+      if(val === 'alternate') statusText.textContent = 'प्रत्येक फेरी नंतर पहिला बदलला जाईल (Alternate).';
+      else statusText.textContent = `${val} पुढच्या राउंडला प्रथम खेळेल.`;
+    });
+
+    // Initialize
+    createBoard();
+    updateScore();
+    // default starter selection handled by UI
+    function init(){
+      alternateStarter = 'X';
+      current = selectFirst.value === 'alternate' ? alternateStarter : selectFirst.value;
+      updateStatus();
+    }
+    init();
+
+    // Accessibility: focus first empty cell when space pressed on grid
+    gridEl.addEventListener('keydown', (e) => {
+      if(e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+        e.preventDefault();
+        // simple focus navigation among cells
+        const active = document.activeElement;
+        if(active && active.classList.contains('cell')){
+          let idx = Number(active.dataset.idx);
+          if(e.key === 'ArrowRight') idx = (idx + 1) % 9;
+          if(e.key === 'ArrowLeft') idx = (idx + 8) % 9;
+          if(e.key === 'ArrowDown') idx = (idx + 3) % 9;
+          if(e.key === 'ArrowUp') idx = (idx + 6) % 9;
+          gridEl.children[idx].focus();
+        } else {
+          gridEl.children[0].focus();
+        }
+      }
+    });
+  </script>
+</body>
+</html>
